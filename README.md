@@ -38,14 +38,14 @@ flowchart TD
     end
 
     subgraph Backend["FastAPI :8000"]
-        AUTH[/api/auth]
-        TESTS[/api/tests]
-        COURSES[/api/courses]
-        ANALYTICS[/api/analytics]
-        AI_RT[/api/ai — чат + эскалации]
-        EMO[/api/emotions]
-        ADM[/api/admin]
-        WS_SRV[/api/ws — WSConnectionManager]
+        node_AUTH[/api/auth/]
+        node_TESTS[/api/tests/]
+        node_COURSES[/api/courses/]
+        node_ANALYTICS[/api/analytics/]
+        node_AI_RT[/api/ai — чат + эскалации/]
+        node_EMO[/api/emotions/]
+        node_ADM[/api/admin/]
+        node_WS_SRV[/api/ws — WSConnectionManager/]
     end
 
     subgraph AI["AI Service (singleton)"]
@@ -63,17 +63,17 @@ flowchart TD
     end
 
     Internet((Internet)) --> CF --> NGINX
-    NGINX -->|/api/ws/| WS_SRV
+    NGINX -->|/api/ws/| node_WS_SRV
     NGINX -->|/api/| Backend
     NGINX -->|"/ (SPA)"| UI
 
     UI -- HTTP/Axios --> Backend
-    WS_CLI -- "ws://host/api/ws/user?token=JWT" --> WS_SRV
-    WS_CLI -- "ws://host/api/ws/psychologist?token=JWT" --> WS_SRV
+    WS_CLI -- "ws://host/api/ws/user?token=JWT" --> node_WS_SRV
+    WS_CLI -- "ws://host/api/ws/psychologist?token=JWT" --> node_WS_SRV
 
-    TESTS --> AI_RT
-    AI_RT --> GROQ -->|"ошибка"| GEMINI -->|"ошибка"| DET
-    AI_RT --> WS_SRV
+    node_TESTS --> node_AI_RT
+    node_AI_RT --> GROQ -->|"ошибка"| GEMINI -->|"ошибка"| DET
+    node_AI_RT --> node_WS_SRV
 
     Backend --> DB
 ```
@@ -319,8 +319,4 @@ PsyPlatform/
 
 ## Материалы проекта
 
-| | |
-|---|---|
-| **Demo Video / Pitch** | *[ссылка на видео]* |
-| **Презентация** | *[ссылка на слайды]* |
-| **Live Demo** | *[публичный URL через Cloudflare Tunnel]* |
+*Soon...*
