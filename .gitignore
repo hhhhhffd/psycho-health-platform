@@ -1,0 +1,48 @@
+# Зависимости
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Сборка
+dist/
+build/
+.vite/
+*.egg-info/
+.eggs/
+
+# Окружение
+.env
+*.env.local
+*.env.*.local
+
+# Python virtual envs
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Логи
+*.log
+logs/
+
+# Docker
+.docker/
+
+# Alembic versions (keep structure, ignore generated files if needed)
+# backend/alembic/versions/*.py  — НЕ игнорируем, нужны для CI
+
+# Временные файлы
+*.tmp
+*.bak
