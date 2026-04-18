@@ -257,7 +257,12 @@ open http://localhost/api/docs
 docker compose logs -f backend
 ```
 
-### 6. Остановка
+### 6. Выдача роли администратора
+```bash
+docker compose exec db psql -U app -d hackathon -c "UPDATE users set role = 'admin' where email = 'admin@admin.com';"
+```
+
+### 7. Остановка
 
 ```bash
 docker compose down          # остановить контейнеры
