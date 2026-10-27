@@ -1,327 +1,80 @@
-# PsyPlatform — Платформа психоэмоционального здоровья
+<div align="center">
 
-Корпоративная платформа для мониторинга и поддержки психоэмоционального состояния сотрудников и учащихся. Пользователь проходит стандартизированные тесты, получает AI-анализ своего состояния и персональные рекомендации по обучающим курсам, а при необходимости — эскалирует запрос к живому психологу в режиме реального времени.
+<h1>PsyPlatform</h1>
+<hr>
 
-**Инженерная задача:** объединить LLM-анализ с детерминированным fallback, role-based доступом и real-time WebSocket-нотификациями в единый продакшн-стек, доступный публично без открытых портов (Cloudflare Tunnel).
+**Psycho-emotional health monitoring in one place: standardized tests, AI analysis with fallbacks, live psychologist escalation**
 
----
+![FastAPI](https://img.shields.io/badge/FASTAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/REACT-19-61DAFB?style=flat-square&logo=react&logoColor=black)
+![PostgreSQL](https://img.shields.io/badge/POSTGRESQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![Docker](https://img.shields.io/badge/DOCKER-compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/LICENSE-MIT-green?style=flat-square)
 
-## Технический стек
+[Stack](#technical-stack) · [Quick start](#quick-start) · [License](#license)
 
-| Категория | Технологии |
-|-----------|-----------|
-| **Core** | FastAPI 0.115, React 19, TypeScript 5.9, Vite 8 |
-| **Data** | PostgreSQL 16 (asyncpg), SQLAlchemy 2.0 async, Alembic, aiosqlite (dev fallback) |
-| **AI/ML** | Groq API / LLaMA 3.3 70B (primary), Google Gemini 2.5 Flash (fallback), детерминированный fallback |
-| **Auth** | JWT (python-jose), bcrypt, HS256, 24h TTL |
-| **Real-time** | WebSocket (FastAPI native) — двунаправленные уведомления |
-| **Frontend libs** | Zustand, Recharts, Radix UI, Tailwind CSS v4, face-api.js, jsPDF, i18next (ru/kk/en) |
-| **Infra** | Docker Compose, Nginx (reverse proxy), Cloudflare Tunnel (Zero Trust) |
+</div>
 
----
+> [!NOTE]
+> Archived — this project is no longer maintained.
 
-## Архитектура
+## What it is
 
-### Системная диаграмма (data flow)
+A platform for monitoring the emotional state of employees and students. A user takes a standardized test, gets an AI analysis with course recommendations, and can escalate to a live psychologist over WebSocket. Admins and psychologists get analytics dashboards.
 
-```mermaid
-flowchart TD
-    subgraph Client["Браузер (React 19 + Vite)"]
-        UI[SPA / Zustand store]
-        WS_CLI[WebSocket client]
-        CAM[face-api.js — эмоции с камеры]
-    end
+AI analysis tries Groq first, then Gemini, then a deterministic score-based fallback, so a test always returns a result even without API keys.
 
-    subgraph Infra["Инфраструктура"]
-        CF[Cloudflare Tunnel]
-        NGINX[Nginx :80\nreverse proxy]
-    end
+## Highlights
 
-    subgraph Backend["FastAPI :8000"]
-        node_AUTH[/api/auth/]
-        node_TESTS[/api/tests/]
-        node_COURSES[/api/courses/]
-        node_ANALYTICS[/api/analytics/]
-        node_AI_RT[/api/ai — чат + эскалации/]
-        node_EMO[/api/emotions/]
-        node_ADM[/api/admin/]
-        node_WS_SRV[/api/ws — WSConnectionManager/]
-    end
+- Three-level analysis chain: Groq (LLaMA 3.3 70B), Google Gemini 2.5 Flash, deterministic fallback.
+- Role-based access (user, psychologist, admin) with JWT and bcrypt.
+- Real-time notifications for users and psychologists through WebSocket.
+- Emotion capture from the camera in the browser (face-api.js), charts and heat map.
+- UI in Russian, Kazakh and English.
 
-    subgraph AI["AI Service (singleton)"]
-        GROQ["Groq\nLLaMA 3.3 70B\nJSON mode"]
-        GEMINI["Gemini 2.5 Flash\nfallback"]
-        DET["Детерминированный\nfallback"]
-    end
+## Technical stack
 
-    subgraph DB["PostgreSQL 16"]
-        USERS[(users)]
-        TEST_RES[(test_results)]
-        COURSES_T[(courses)]
-        ESCALATIONS[(chat_escalations)]
-        EMOTIONS[(emotion_records)]
-    end
+| Layer | Technology |
+|-------|------------|
+| Backend | Python, FastAPI 0.115, SQLAlchemy 2 (async), Alembic |
+| Frontend | React 19, TypeScript 5.9, Vite 8, Tailwind CSS 4, Zustand, Recharts |
+| Data | PostgreSQL 16 (asyncpg), SQLite via aiosqlite for local development |
+| AI | Groq API, Google Gemini API |
+| Infra | Docker Compose, Nginx, Cloudflare Tunnel |
 
-    Internet((Internet)) --> CF --> NGINX
-    NGINX -->|/api/ws/| node_WS_SRV
-    NGINX -->|/api/| Backend
-    NGINX -->|"/ (SPA)"| UI
+## Quick start
 
-    UI -- HTTP/Axios --> Backend
-    WS_CLI -- "ws://host/api/ws/user?token=JWT" --> node_WS_SRV
-    WS_CLI -- "ws://host/api/ws/psychologist?token=JWT" --> node_WS_SRV
-
-    node_TESTS --> node_AI_RT
-    node_AI_RT --> GROQ -->|"ошибка"| GEMINI -->|"ошибка"| DET
-    node_AI_RT --> node_WS_SRV
-
-    Backend --> DB
-```
-
-### AI Pipeline — цепочка анализа
-
-```mermaid
-flowchart LR
-    A[Пользователь завершает тест] --> B[POST /api/tests/category/submit]
-    B --> C{Groq API\nдоступен?}
-    C -- Да --> D["LLaMA 3.3 70B\nJSON mode\ntemp=0.3"]
-    C -- Нет --> E{Gemini API\nдоступен?}
-    E -- Да --> F["Gemini 2.5 Flash\nJSON mode\ntemp=0.3"]
-    E -- Нет --> G[Детерминированный\nанализ по % шкале]
-    D --> H[Pydantic AIAnalysisResponse\nvalidate]
-    F --> H
-    G --> H
-    H --> I[Сохранить в test_results\nБД]
-    I --> J[Вернуть:\ncondition_level\nscore 0-100\nsummary\nrecommendations\nrecommended_course_id\ndetailed_analysis]
-```
-
-### Эскалация: AI → Психолог (real-time)
-
-```mermaid
-sequenceDiagram
-    actor User as Пользователь
-    participant FE as React SPA
-    participant API as FastAPI
-    participant WS as WSConnectionManager
-    actor Psych as Психолог
-
-    User->>FE: Нажимает «Связаться с психологом»
-    FE->>API: POST /api/ai/escalate {user_message}
-    API->>API: Создаёт ChatEscalation (status=pending)
-    API->>WS: notify_psychologists({type: "new_escalation"})
-    WS-->>Psych: WebSocket push (мгновенно)
-    API-->>FE: 201 Created {id, status: "pending"}
-
-    Psych->>API: POST /api/ai/escalations/{id}/reply {reply}
-    API->>API: Обновляет статус → responded
-    API->>WS: notify_user(user_id, {type: "escalation_update"})
-    WS-->>User: WebSocket push (без перезагрузки страницы)
-    FE-->>User: Показывает ответ психолога
-```
-
-### Ролевая модель
-
-```mermaid
-flowchart LR
-    subgraph Roles
-        U[user]
-        P[psychologist]
-        A[admin]
-    end
-
-    U --> T1[Проходить тесты]
-    U --> T2[AI чат]
-    U --> T3[Эскалация к психологу]
-    U --> T4[Просмотр своих результатов]
-    U --> T5[Курсы и прогресс]
-    U --> T6[Эмоции с камеры]
-
-    P --> T3
-    P --> PD[Дашборд психолога]
-    P --> PD2[Ответы на эскалации]
-    P --> PD3[Аналитика по группам]
-
-    A --> ALL[Всё выше + управление\nпользователями /api/admin]
-```
-
----
-
-## Архитектурные решения (ADR)
-
-**ADR-1: FastAPI вместо Django/Flask**
-Нативная поддержка `async/await` критична для двух сценариев: параллельных вызовов к внешним AI API (Groq + Gemini) и WebSocket-соединений без блокировки event loop. Django ORM с его синхронной природой потребовал бы дополнительных воркеров или `sync_to_async` обёрток.
-
-**ADR-2: Groq → Gemini → Детерминированный fallback**
-AI-анализ — критический путь пользователя. Если платформа используется в школе или корпорации без стабильного доступа к Groq, результат теста всё равно должен быть получен. Детерминированный fallback основан на процентной шкале raw_score и гарантирует валидный ответ даже при полном отсутствии AI-ключей.
-
-**ADR-3: Cloudflare Tunnel вместо публичного IP/port-forward**
-Хакатонный деплой требовал публичного URL без возможности открыть порты на хосте. Cloudflare Zero Trust Tunnel создаёт исходящее соединение от контейнера к edge-сети Cloudflare — никаких входящих правил в firewall, автоматический TLS, защита от DDoS.
-
-**ADR-4: aiosqlite как dev-fallback для БД**
-Позволяет запустить бэкенд локально одной командой (`DATABASE_URL` по умолчанию — SQLite) без необходимости поднимать Docker для разработки отдельных модулей. В продакшне используется PostgreSQL 16 через asyncpg.
-
----
-
-## Запуск и деплой
-
-### Предварительные требования
-
-- Docker 24+ и Docker Compose v2
-- API-ключи: [Groq](https://console.groq.com) и/или [Google AI Studio](https://aistudio.google.com)
-- (Опционально) Cloudflare Tunnel токен
-
-### 1. Клонирование и настройка окружения
+Requirements: Docker with Compose. AI keys are optional because of the fallback.
 
 ```bash
-git clone <repo-url>
-cd PsyPlatform
-
-cp .env.example .env
-```
-
-Откройте `.env` и заполните:
-
-```dotenv
-# База данных (значения по умолчанию работают «из коробки» с docker-compose)
-DATABASE_URL=postgresql+asyncpg://app:app@db:5432/hackathon
-
-# AI ключи (хотя бы один обязателен для полного функционала)
-GROQ_API_KEY=gsk_...
-GEMINI_API_KEY=AIza...
-
-# JWT — обязательно смените в продакшне
-JWT_SECRET=your-super-secret-key-change-in-production
-JWT_ALGORITHM=HS256
-JWT_EXPIRE_MINUTES=1440
-
-# Окружение
-ENVIRONMENT=development
-
-# Cloudflare Tunnel (опционально — только для публичного доступа)
-CLOUDFLARE_TUNNEL_TOKEN=
-```
-
-> **Важно:** хост базы данных в `DATABASE_URL` — `db` (имя сервиса из `docker-compose.yml`), не `localhost` и не `postgres`.
-
-### 2. Запуск
-
-```bash
+cp .env.example .env     # add GROQ_API_KEY / GEMINI_API_KEY if available
 docker compose up --build
 ```
 
-Сервисы поднимутся в следующем порядке (healthcheck-зависимости):
-
-| Сервис | Порт | URL |
-|--------|------|-----|
-| PostgreSQL | 5432 | — |
-| FastAPI (backend) | 8000 | http://localhost:8000/docs |
-| React + Vite (frontend) | 5173 | — |
-| Nginx (reverse proxy) | **80** | **http://localhost** |
-| Cloudflare Tunnel | — | публичный URL из дашборда CF |
-
-При первом старте FastAPI автоматически запустит seed-скрипт и наполнит базу демо-данными (пользователи, тесты, курсы).
-
-### 3. Миграции базы данных
-
-Alembic используется для управления схемой. Чтобы применить миграции вручную:
+The app is served by Nginx at `http://localhost`, the API docs at `http://localhost/api/docs`. Demo data (users, tests, courses) is seeded on first start. Apply migrations with:
 
 ```bash
 docker compose exec backend alembic upgrade head
 ```
 
-Создать новую миграцию после изменений моделей:
+| Variable | Default in `.env.example` | Purpose |
+|----------|---------------------------|---------|
+| `DATABASE_URL` | `postgresql+asyncpg://app:app@db:5432/hackathon` | Database (`db` is the compose service) |
+| `GROQ_API_KEY` | empty | Primary AI provider |
+| `GEMINI_API_KEY` | empty | Fallback AI provider |
+| `JWT_SECRET` | `your-super-secret-key-change-in-production` | JWT signing secret |
+| `JWT_EXPIRE_MINUTES` | `1440` | Token lifetime |
+| `CLOUDFLARE_TUNNEL_TOKEN` | empty | Optional public access |
 
-```bash
-docker compose exec backend alembic revision --autogenerate -m "описание изменений"
+## Project structure
+
+```text
+backend/    FastAPI app (api, core, models, services, seed), Alembic migrations
+frontend/   React SPA: pages, components, stores, WebSocket hook
+nginx/      Reverse proxy with WebSocket upgrade
+docs/       Static demo bundle
 ```
 
-### 4. Настройка Cloudflare Tunnel (для публичного доступа)
+## License
 
-1. Войдите на [dash.cloudflare.com](https://dash.cloudflare.com) → **Zero Trust** → **Networks** → **Tunnels**
-2. Создайте туннель, скопируйте токен
-3. Вставьте токен в `.env`: `CLOUDFLARE_TUNNEL_TOKEN=<токен>`
-4. В настройках туннеля укажите: `http://nginx:80` как Public Hostname
-5. Перезапустите: `docker compose up -d cloudflared`
-
-### 5. Проверка работоспособности
-
-```bash
-# Health check бэкенда
-curl http://localhost/api/health
-# → {"status": "ok", "version": "1.0.0"}
-
-# Swagger UI
-open http://localhost/api/docs
-
-# Логи отдельного сервиса
-docker compose logs -f backend
-```
-
-### 6. Выдача роли администратора
-```bash
-docker compose exec db psql -U app -d hackathon -c "UPDATE users set role = 'admin' where email = 'admin@admin.com';"
-```
-
-### 7. Остановка
-
-```bash
-docker compose down          # остановить контейнеры
-docker compose down -v       # + удалить данные PostgreSQL
-```
-
----
-
-## Структура проекта
-
-```
-PsyPlatform/
-├── backend/
-│   ├── app/
-│   │   ├── api/          # Роутеры: auth, tests, courses, analytics, ai, emotions, admin, ws
-│   │   ├── core/         # security.py — JWT decode, get_current_user, require_role
-│   │   ├── models/       # SQLAlchemy ORM: user, test, course, emotion, chat
-│   │   ├── schemas/      # Pydantic v2 схемы (валидация I/O)
-│   │   ├── services/     # ai_service.py, analytics_service.py
-│   │   ├── seed/         # Демо-данные для первого запуска
-│   │   ├── config.py     # Pydantic Settings (из .env)
-│   │   ├── database.py   # AsyncEngine, AsyncSessionLocal, Base
-│   │   └── main.py       # Точка входа: lifespan, CORS, роутеры
-│   ├── alembic/          # Миграции схемы БД
-│   └── requirements.txt
-├── frontend/
-│   └── src/
-│       ├── api/          # Axios-клиенты для каждого роутера
-│       ├── components/   # AIChatWidget, EmotionCamera, EmotionalRadar, HeatMap
-│       ├── pages/        # Login, TestSelect, TestPass, TestResult, Courses, AdminDashboard...
-│       ├── stores/       # Zustand: authStore, testStore
-│       └── hooks/        # useWebSocket.ts
-├── nginx/nginx.conf       # Reverse proxy + WS upgrade
-├── docker-compose.yml
-└── .env.example
-```
-
----
-
-## API — ключевые эндпоинты
-
-| Метод | Путь | Описание |
-|-------|------|----------|
-| `POST` | `/api/auth/register` | Регистрация |
-| `POST` | `/api/auth/login` | Получение JWT |
-| `GET` | `/api/tests/categories` | Список категорий тестов |
-| `POST` | `/api/tests/{category}/submit` | Сдать тест → AI-анализ |
-| `POST` | `/api/ai/chat` | Чат с AI ассистентом |
-| `POST` | `/api/ai/escalate` | Эскалация к психологу |
-| `POST` | `/api/ai/escalations/{id}/reply` | Ответ психолога |
-| `GET` | `/api/analytics/...` | Аналитика (admin/psychologist) |
-| `POST` | `/api/emotions/record` | Сохранить запись эмоции с камеры |
-| `WS` | `/api/ws/user?token=JWT` | Real-time уведомления → пользователь |
-| `WS` | `/api/ws/psychologist?token=JWT` | Real-time уведомления → психолог |
-
-Полная интерактивная документация: `http://localhost/api/docs` (Swagger UI)
-
----
-
-## Материалы проекта
-
-*Soon...*
+MIT, see [LICENSE](LICENSE).
